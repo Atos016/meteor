@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spore Célula (HTML5)</title>
+  <style>
+    body { margin:0; overflow:hidden; background:black; color:white; font-family:sans-serif; }
+    canvas { display:block; margin:0 auto; background:linear-gradient(#001,#003); }
+    #ui { position:absolute; top:10px; left:10px; font-size:14px; }
+    #joystick { position:absolute; bottom:20px; left:20px; width:100px; height:100px; border:2px solid white; border-radius:50%; }
+    #stick { position:absolute; width:40px; height:40px; background:white; border-radius:50%; left:30px; top:30px; }
+    #boost { position:absolute; bottom:40px; right:40px; width:80px; height:80px; background:red; border-radius:50%; opacity:0.6; text-align:center; line-height:80px; font-weight:bold; }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="ui">DNA: <span id="dna">0</span> | Nível: <span id="nivel">1</span></div>
+  <div id="joystick"><div id="stick"></div></div>
+  <div id="boost">Boost</div>
+
+  <script>
+  // Configurações básicas
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  resizeCanvas();
+  window.addEventListener("resize", resizeCanvas);
+
+  function resizeCanvas(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  let dna = 0, nivel = 1;
+  let player = {x:200,y:200,r:20,speed:2,vx:0,vy:0};
+  let foods = [], enemies = [], toxins = [];
+
+  function spawnFood(){
+    foods.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,r:8});
+  }
+  function spawnEnemy(){
+    enemies.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,r:25,vx:Math.random()*2-1,vy:Math.random()*2-1});
+  }
+  function spawnToxin(){
+    toxins.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,r:10});
+  }
+
+  for(let i=0;i<20;i++) spawnFood();
+  for(let i=0;i<3;i++) spawnEnemy();
+  for(let i=0;i<5;i++) spawnToxin();
+
+  // Controles virtuais
+  const joystick = document.getElementById("joystick");
+  const stick = document.getElementById("stick");
+  let joyActive = false, joyCenter = {x:70,y:window.innerHeight-70}, joyVector={x:0,y:0};
+  joystick.addEventListener("touchstart",e=>{joyActive=true;});
+  joystick.addEventListener("touchend",e=>{joyActive=false;stick.style.left="30px";stick.style.top="30px";joyVector={x:0,y:0};});
+  joystick.addEventListener("touchmove",e=>{
+    const touch = e.touches[0];
+    const rect = joystick.getBoundingClientRect();
+    let dx = touch.clientX-(rect.left+50);
+    let dy = touch.clientY-(rect.top+50);
+    const dist = Math.min(Math.sqrt(dx*dx+dy*dy),40);
+    const angle = Math.atan2(dy,dx);
+    joyVector.x = Math.cos(angle)*dist/40;
+    joyVector.y = Math.sin(angle)*dist/40;
+    stick.style.left = 30+joyVector.x*30+"px";
+    stick.style.top = 30+joyVector.y*30+"px";
+  });
+
+  // Boost
+  let boosting=false;
+  document.getElementById("boost").addEventListener("touchstart",()=>boosting=true);
+  document.getElementById("boost").addEventListener("touchend",()=>boosting=false);
+
+  // Game loop
+  function loop(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    // player movement
+    player.vx = joyVector.x*player.speed*(boosting?2:1);
+    player.vy = joyVector.y*player.speed*(boosting?2:1);
+    player.x += player.vx;
+    player.y += player.vy;
+    player.x = Math.max(player.r,Math.min(canvas.width-player.r,player.x));
+    player.y = Math.max(player.r,Math.min(canvas.height-player.r,player.y));
+
+    // draw player
+    ctx.beginPath();
+    ctx.fillStyle="cyan";
+    ctx.arc(player.x,player.y,player.r,0,Math.PI*2);
+    ctx.fill();
+
+    // foods
+    ctx.fillStyle="lime";
+    for(let i=foods.length-1;i>=0;i--){
+      let f=foods[i];
+      ctx.beginPath();
+      ctx.arc(f.x,f.y,f.r,0,Math.PI*2);
+      ctx.fill();
+      if(dist(player,f)<player.r+f.r){
+        foods.splice(i,1);
+        dna++; player.r+=0.2;
+        if(dna%10==0){nivel++; document.getElementById("nivel").textContent=nivel;}
+        document.getElementById("dna").textContent=dna;
+        spawnFood();
+      }
+    }
+
+    // enemies
+    ctx.fillStyle="red";
+    for(let e of enemies){
+      e.x+=e.vx; e.y+=e.vy;
+      if(e.x<e.r||e.x>canvas.width-e.r) e.vx*=-1;
+      if(e.y<e.r||e.y>canvas.height-e.r) e.vy*=-1;
+      ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,Math.PI*2); ctx.fill();
+      if(dist(player,e)<player.r+e.r){ alert("Game Over! DNA: "+dna); reset(); return; }
+    }
+
+    // toxins
+    ctx.fillStyle="purple";
+    for(let t of toxins){
+      ctx.beginPath(); ctx.arc(t.x,t.y,t.r,0,Math.PI*2); ctx.fill();
+      if(dist(player,t)<player.r+t.r){ alert("Envenenado! Game Over! DNA: "+dna); reset(); return; }
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+
+  function reset(){
+    dna=0;nivel=1;
+    player={x:200,y:200,r:20,speed:2,vx:0,vy:0};
+    foods=[]; enemies=[]; toxins=[];
+    for(let i=0;i<20;i++) spawnFood();
+    for(let i=0;i<3;i++) spawnEnemy();
+    for(let i=0;i<5;i++) spawnToxin();
+    document.getElementById("dna").textContent=dna;
+    document.getElementById("nivel").textContent=nivel;
+  }
+
+  loop();
+  </script>
+</body>
+</html>
